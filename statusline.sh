@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
-# Claude Code status line — Pac-Man style (dynamic BFS version)
-# Maze 30×7 with multiple corridors & intersections.
-# BFS from center determines eat order — dots vanish outward naturally.
+# Claude Code status line — Pac-Man style (single line chase)
+# Top: model/size | CLAUDE | context remain. Map below. Limits underneath.
 
 input=$(cat)
 
+# ── chomp state (toggle between open/closed mouth each update) ───────────────
+CHOMP_FILE="/tmp/.claude-pacman-chomp"
+if [ -f "$CHOMP_FILE" ] && [ "$(cat "$CHOMP_FILE")" = "1" ]; then
+  PAC_CHAR="●"; G1_CHAR="ᗩ"; G2_CHAR="ᗣ"; echo "0" > "$CHOMP_FILE"
+else
+  PAC_CHAR="ᗧ"; G1_CHAR="ᗣ"; G2_CHAR="ᗩ"; echo "1" > "$CHOMP_FILE"
+fi
+
 # ── colours ──────────────────────────────────────────────────────────────────
-B='\033[34m'; Y='\033[1;33m'; R='\033[1;31m'; P='\033[1;35m'
-W='\033[0;37m'; DIM='\033[2m'; NC='\033[0m'
+B='\033[38;5;27m'; Y='\033[1;33m'; R='\033[1;31m'; P='\033[1;35m'
+O='\033[38;5;208m'; W='\033[0;37m'; DIM='\033[2m'; NC='\033[0m'
 
 # ── extract fields ───────────────────────────────────────────────────────────
 ctx_pct=$(echo "$input"    | jq -r '.context_window.used_percentage // "0"')
@@ -15,6 +22,9 @@ five_pct=$(echo "$input"   | jq -r '.rate_limits.five_hour.used_percentage // em
 five_reset=$(echo "$input" | jq -r '.rate_limits.five_hour.resets_at // empty')
 week_pct=$(echo "$input"   | jq -r '.rate_limits.seven_day.used_percentage // empty')
 week_reset=$(echo "$input" | jq -r '.rate_limits.seven_day.resets_at // empty')
+model=$(echo "$input"      | jq -r 'if .model | type == "object" then (.model.display_name // .model.id // empty) | gsub("\\s*\\(.*\\)"; "") else .model // empty end')
+ctx_total=$(echo "$input"  | jq -r '.context_window.context_window_size // .context_window.total_tokens // empty')
+version=$(echo "$input"    | jq -r '.version // empty')
 
 ctx_int=$(printf "%.0f" "$ctx_pct" 2>/dev/null || echo 0)
 five_int=$(printf "%.0f" "${five_pct:-0}" 2>/dev/null || echo 0)
@@ -31,170 +41,200 @@ fmt_reset() {
   else printf "%dm" "$m"; fi
 }
 
-colour_pct() {
-  local pct="$1"
-  if   (( pct >= 80 )); then printf "${R}%d%%${NC}" "$pct"
-  elif (( pct >= 50 )); then printf "${Y}%d%%${NC}" "$pct"
-  else printf "${W}%d%%${NC}" "$pct"; fi
+colour_remain() {
+  local remain="$1"
+  if   (( remain <= 20 )); then printf "\033[1;31m%d%%\033[0m" "$remain"
+  elif (( remain <= 50 )); then printf "\033[1;33m%d%%\033[0m" "$remain"
+  else printf "\033[0;37m%d%%\033[0m" "$remain"; fi
 }
 
-# ── maze (30 wide × 7 tall) ─────────────────────────────────────────────────
-# 3 horizontal corridors connected by 5 vertical passages (cols 1,7,14,21,28)
-# 0=wall, 1=dot
-M0="000000000000000000000000000000"
-M1="011111111111111111111111111110"
-M2="010000010000001000000100000010"
-M3="011111111111111111111111111110"
-M4="010000010000001000000100000010"
-M5="011111111111111111111111111110"
-M6="000000000000000000000000000000"
+fmt_tokens() {
+  local t="$1"; [ -z "$t" ] && return
+  if (( t >= 1000000 )); then printf "%dM" $(( t / 1000000 ))
+  elif (( t >= 1000 )); then printf "%dk" $(( t / 1000 ))
+  else printf "%d" "$t"; fi
+}
 
-# ── pre-build flat maze array ────────────────────────────────────────────────
-declare -a MZ
-for (( r=0; r<=6; r++ )); do
-  eval "row=\$M${r}"
-  for (( c=0; c<30; c++ )); do
-    MZ[$(( r * 30 + c ))]=${row:$c:1}
-  done
-done
+rep_hline() {
+  local n=$1 s=""
+  for (( i=0; i<n; i++ )); do s+="\033[38;5;27m═\033[0m"; done
+  printf "%s" "$s"
+}
 
-# ── BFS from center of middle corridor ───────────────────────────────────────
-# Expands outward: first along row 3, then through passages to rows 1 & 5
-declare -a BR BC SEEN QR QC
-head=0; tail=0; bi=0
+# ── map config ───────────────────────────────────────────────────────────────
+MAP_W=50
+PAD=1  # padding between border and content
+TOTAL_W=$(( MAP_W + 2 + PAD * 2 ))  # 54
 
-# Start: center of row 3
-sr=3; sc=14
-QR[0]=$sr; QC[0]=$sc; tail=1
-SEEN[$(( sr * 30 + sc ))]=1
+# ── remaining values ─────────────────────────────────────────────────────────
+ctx_remain=$(( 100 - ctx_int )); (( ctx_remain < 0 )) && ctx_remain=0
+five_remain=$(( 100 - five_int )); (( five_remain < 0 )) && five_remain=0
+week_remain=$(( 100 - week_int )); (( week_remain < 0 )) && week_remain=0
+five_rs=$(fmt_reset "$five_reset")
+week_rs=$(fmt_reset "$week_reset")
 
-while (( head < tail )); do
-  cr=${QR[$head]}; cc=${QC[$head]}; ((head++))
-  BR[$bi]=$cr; BC[$bi]=$cc; ((bi++))
+# ── positions ────────────────────────────────────────────────────────────────
+PAC_MIN=12  # minimum start position — leaves room for ghosts to chase
+pac_pos=$(( PAC_MIN + ctx_int * (MAP_W - 1 - PAC_MIN) / 100 ))
+(( pac_pos < PAC_MIN )) && pac_pos=$PAC_MIN
+(( pac_pos >= MAP_W )) && pac_pos=$(( MAP_W - 1 ))
 
-  # Neighbors: left, right, up, down (horizontal first for corridor-like spread)
-  for dc in -1 1; do
-    nc=$(( cc + dc ))
-    if (( nc >= 0 && nc < 30 )); then
-      idx=$(( cr * 30 + nc ))
-      if [[ "${MZ[$idx]}" == "1" ]] && [[ -z "${SEEN[$idx]}" ]]; then
-        SEEN[$idx]=1; QR[$tail]=$cr; QC[$tail]=$nc; ((tail++))
-      fi
-    fi
-  done
-  for dr in -1 1; do
-    nr=$(( cr + dr ))
-    if (( nr >= 0 && nr <= 6 )); then
-      idx=$(( nr * 30 + cc ))
-      if [[ "${MZ[$idx]}" == "1" ]] && [[ -z "${SEEN[$idx]}" ]]; then
-        SEEN[$idx]=1; QR[$tail]=$nr; QC[$tail]=$cc; ((tail++))
-      fi
-    fi
-  done
-done
-total=$bi
-
-# ── pac-man position ─────────────────────────────────────────────────────────
-eaten=$(( ctx_int * total / 100 ))
-(( eaten >= total )) && eaten=$(( total - 1 ))
-(( eaten < 0 )) && eaten=0
-pac_r=${BR[$eaten]}; pac_c=${BC[$eaten]}
-
-# ── ghost positions (in uneaten area, from opposite ends) ────────────────────
-remaining=$(( total - eaten - 1 ))
-g1r=-1; g1c=-1; g2r=-1; g2c=-1
-
-if [ -n "$five_pct" ] && (( remaining > 0 )); then
-  # Ghost1 (red): close to pac-man in BFS order. High % = closer.
-  offset=$(( remaining * (100 - five_int) / 100 ))
-  (( offset < 1 )) && offset=1
-  g1=$(( eaten + offset ))
-  (( g1 >= total )) && g1=$(( total - 1 ))
-  g1r=${BR[$g1]}; g1c=${BC[$g1]}
-fi
-
-if [ -n "$week_pct" ] && (( remaining > 0 )); then
-  # Ghost2 (purple): from far end of BFS. High % = closer.
-  offset=$(( remaining * (100 - week_int) / 100 ))
-  (( offset < 1 )) && offset=1
-  g2=$(( total - offset ))
-  (( g2 <= eaten )) && g2=$(( eaten + 2 ))
-  (( g2 >= total )) && g2=$(( total - 1 ))
-  g2r=${BR[$g2]}; g2c=${BC[$g2]}
-  # Avoid overlap
-  if (( g1r >= 0 && g2r == g1r && g2c == g1c )); then
-    (( g2 < total - 1 )) && { ((g2++)); g2r=${BR[$g2]}; g2c=${BC[$g2]}; }
-  fi
-fi
-
-# ── build display grid ──────────────────────────────────────────────────────
-declare -a G
-for (( i=0; i<210; i++ )); do G[$i]=${MZ[$i]}; done
-
-# Mark eaten dots
-for (( i=0; i<eaten; i++ )); do
-  G[$(( BR[i] * 30 + BC[i] ))]=2
-done
-
-# Place characters
-G[$(( pac_r * 30 + pac_c ))]=3
-if (( g1r >= 0 )); then
-  idx=$(( g1r * 30 + g1c ))
-  (( idx != pac_r * 30 + pac_c )) && G[$idx]=4
-fi
-if (( g2r >= 0 )); then
-  idx=$(( g2r * 30 + g2c ))
-  (( idx != pac_r * 30 + pac_c )) && G[$idx]=5
-fi
-
-# ── render maze rows ────────────────────────────────────────────────────────
-declare -a MR
-for (( r=0; r<=6; r++ )); do
-  line=""
-  for (( c=0; c<30; c++ )); do
-    case "${G[$(( r * 30 + c ))]}" in
-      0) line+="${B}█${NC}" ;;
-      1) line+="${W}·${NC}" ;;
-      2) line+=" " ;;
-      3) line+="${Y}ᗧ${NC}" ;;
-      4) line+="${R}ᗝ${NC}" ;;
-      5) line+="${P}ᗝ${NC}" ;;
-    esac
-  done
-  MR[$r]="$line"
-done
-
-# ── format left-side stats ───────────────────────────────────────────────────
-five_rs=$(fmt_reset "$five_reset"); week_rs=$(fmt_reset "$week_reset")
-pad() { local n=$(( 27 - $1 )); printf "%*s" "$n" ""; }
-
-ctx_c=$(colour_pct "$ctx_int"); ctx_vl=$(( 4 + ${#ctx_int} + 1 ))
+g1=-1; g2=-1; game_over=0
+g2_caged=0  # 1 = 7d ghost locked in room
 
 if [ -n "$five_pct" ]; then
-  five_c=$(colour_pct "$five_int")
-  if [ -n "$five_rs" ]; then
-    l5="$(printf "${R}ᗝ${NC} ${DIM}5h${NC} %s ${DIM}⟳%s${NC}" "$five_c" "$five_rs")"
-    l5v=$(( 5 + ${#five_int} + 1 + 2 + ${#five_rs} ))
+  if (( five_int >= 100 )); then g1=$pac_pos; game_over=1
   else
-    l5="$(printf "${R}ᗝ${NC} ${DIM}5h${NC} %s" "$five_c")"; l5v=$(( 5 + ${#five_int} + 1 ))
+    # Ghost range: ROOM_W..pac_pos (calculated after room offset is set)
+    g1_pending=$five_int
   fi
-else l5=""; l5v=0; fi
+fi
 
 if [ -n "$week_pct" ]; then
-  week_c=$(colour_pct "$week_int")
-  if [ -n "$week_rs" ]; then
-    l6="$(printf "${P}ᗝ${NC} ${DIM}7d${NC} %s ${DIM}⟳%s${NC}" "$week_c" "$week_rs")"
-    l6v=$(( 5 + ${#week_int} + 1 + 2 + ${#week_rs} ))
-  else
-    l6="$(printf "${P}ᗝ${NC} ${DIM}7d${NC} %s" "$week_c")"; l6v=$(( 5 + ${#week_int} + 1 ))
+  # Cage ghost when 7d usage < 50% (remaining > 50%)
+  if (( week_remain > 50 )); then
+    g2_caged=1
   fi
-else l6=""; l6v=0; fi
+
+  if (( g2_caged == 0 )); then
+    if (( week_int >= 100 )); then g2=$pac_pos; game_over=1
+    else
+      g2_pending=$week_int
+    fi
+  fi
+fi
+
+# ── room offset (caged ghost takes positions 0-4) ─────────────────────────────
+ROOM_W=0
+if (( g2_caged )); then
+  ROOM_W=5  # 3 interior + 1 wall + 1 gap
+  (( pac_pos < ROOM_W )) && pac_pos=$ROOM_W
+fi
+
+# ── resolve pending ghost positions (relative to their start..pac_pos range) ──
+if [ -n "${g1_pending:-}" ]; then
+  g1_start=$ROOM_W
+  g1=$(( g1_start + g1_pending * (pac_pos - g1_start) / 100 ))
+fi
+if [ -n "${g2_pending:-}" ]; then
+  g2=$(( week_int * pac_pos / 100 ))
+fi
+
+# ── resolve overlaps ────────────────────────────────────────────────────────
+if (( game_over == 0 )); then
+  (( g1 >= 0 && g1 >= pac_pos && pac_pos > 0 )) && g1=$(( pac_pos - 1 ))
+  (( g2 >= 0 && g2 >= pac_pos && pac_pos > 0 )) && g2=$(( pac_pos - 1 ))
+fi
+if (( g1 >= 0 && g2 >= 0 && g1 == g2 )); then
+  if (( five_int <= week_int )); then (( g1 > 0 )) && ((g1--))
+  else (( g2 > 0 )) && ((g2--)); fi
+fi
+if (( game_over == 0 )); then
+  (( g1 >= 0 && g1 == pac_pos && pac_pos > 0 )) && g1=$(( pac_pos - 1 ))
+  (( g2 >= 0 && g2 == pac_pos && pac_pos > 0 )) && g2=$(( pac_pos - 1 ))
+fi
+
+# ── build game line ──────────────────────────────────────────────────────────
+go_text=" GAME OVER"
+go_start=-1
+if (( game_over )); then
+  go_start=$(( pac_pos + 1 ))
+  if (( go_start + ${#go_text} > MAP_W )); then
+    go_start=$(( MAP_W - ${#go_text} ))
+    (( go_start <= pac_pos )) && go_start=$(( pac_pos + 1 ))
+  fi
+fi
+
+game=""
+# Prepend room if ghost is caged (ghost bounces in 3-cell room + wall + gap)
+if (( g2_caged )); then
+  if [ "$PAC_CHAR" = "ᗧ" ]; then
+    game+="\033[1;35m${G2_CHAR}\033[0m  ${B}▌${NC} "
+  else
+    game+="  \033[1;35m${G2_CHAR}\033[0m${B}▌${NC} "
+  fi
+fi
+# Cherry position at ~80% context (auto compact threshold)
+cherry_pos=$(( PAC_MIN + 95 * (MAP_W - 1 - PAC_MIN) / 100 ))
+
+for (( i=ROOM_W; i<MAP_W; i++ )); do
+  if (( game_over && go_start >= 0 && i >= go_start && i < go_start + ${#go_text} )); then
+    ci=$(( i - go_start ))
+    ch="${go_text:$ci:1}"
+    if [[ "$ch" == " " ]]; then game+=" "
+    else game+="\033[1;31m${ch}\033[0m"; fi
+  elif (( game_over && i == pac_pos )); then
+    if (( g1 >= 0 && g1 == pac_pos )); then game+="\033[1;31m${G1_CHAR}\033[0m"
+    else game+="\033[1;35m${G2_CHAR}\033[0m"; fi
+  elif (( !game_over && i == pac_pos )); then
+    game+="\033[1;33m${PAC_CHAR}\033[0m"
+  elif (( g1 >= 0 && i == g1 && !(game_over && g1 == pac_pos) )); then
+    game+="\033[1;31m${G1_CHAR}\033[0m"
+  elif (( g2 >= 0 && i == g2 && !(game_over && g2 == pac_pos) )); then
+    game+="\033[1;35m${G2_CHAR}\033[0m"
+  elif (( i > pac_pos && i == cherry_pos )); then
+    game+="\033[1;31mᐝ\033[0m"
+  elif (( i > pac_pos )); then
+    game+="\033[0;37m·\033[0m"
+  else
+    game+=" "
+  fi
+done
+
+# ── build border lines ────────────────────────────────────────────────────────
+hline_w=$(( MAP_W + PAD * 2 ))
+top_border="${B}╭${NC}$(rep_hline $hline_w)${B}╮${NC}"
+bot_border="${B}╰${NC}$(rep_hline $hline_w)${B}╯${NC}"
+
+# ── header: CLAUDE (left)    model size ᗧontext XX% left (right) ─────────────
+ctx_size=$(fmt_tokens "$ctx_total")
+ctx_c=$(colour_remain "$ctx_remain")
+
+# Right text: "opus 4.6 1M ᗧontext 65% left"
+right_plain=""
+[ -n "$model" ] && right_plain+="${model} "
+[ -n "$ctx_size" ] && right_plain+="${ctx_size} "
+right_plain+="Xontext ${ctx_remain}% left"
+right_len=${#right_plain}
+
+# Left = "CLAUDE vX.X.X"
+left_plain="CLAUDE"
+[ -n "$version" ] && left_plain+=" v${version}"
+left_len=${#left_plain}
+gap=$(( TOTAL_W - left_len - right_len ))
+(( gap < 2 )) && gap=2
+
+# Colored left
+left_colored="${O}CLAUDE${NC}"
+[ -n "$version" ] && left_colored+=" ${DIM}v${version}${NC}"
+
+# Colored right
+right_colored=""
+[ -n "$model" ] && right_colored+="${W}${model}${NC} "
+[ -n "$ctx_size" ] && right_colored+="\033[2m${ctx_size}\033[0m "
+right_colored+="\033[1;33mᗧ\033[0m\033[2montext\033[0m ${ctx_c} \033[2mleft\033[0m"
+
+# ── rate limit line (below map) ──────────────────────────────────────────────
+limit_line=""
+if [ -n "$week_pct" ]; then
+  week_c=$(colour_remain "$week_remain")
+  limit_line+="\033[1;35mᗩ\033[0m \033[2m7d\033[0m ${week_c}"
+  [ -n "$week_rs" ] && limit_line+=" \033[2m↓${week_rs}\033[0m"
+fi
+if [ -n "$five_pct" ]; then
+  [ -n "$limit_line" ] && limit_line+="  "
+  five_c=$(colour_remain "$five_remain")
+  limit_line+="\033[1;31mᗩ\033[0m \033[2m5h\033[0m ${five_c}"
+  [ -n "$five_rs" ] && limit_line+=" \033[2m↓${five_rs}\033[0m"
+fi
 
 # ── output ───────────────────────────────────────────────────────────────────
-printf "${B}█▀▀${NC} ${B}█${NC}   ${B}▄▀▄${NC} ${B}█ █${NC} ${B}█▀▄${NC} ${B}█▀▀${NC}    ${MR[0]}\n"
-printf "${B}█${NC}   ${B}█${NC}   ${B}█▀█${NC} ${B}█ █${NC} ${B}█ █${NC} ${B}█▀${NC}     ${MR[1]}\n"
-printf "${B}▀▀▀${NC} ${B}▀▀▀${NC} ${B}▀ ▀${NC} ${B}▀▀▀${NC} ${B}▀▀${NC}  ${B}▀▀▀${NC}    ${MR[2]}\n"
-printf "${DIM}ctx${NC} %s$(pad $ctx_vl)${MR[3]}\n" "$ctx_c"
-printf "%s$(pad $l5v)${MR[4]}\n" "$l5"
-printf "%s$(pad $l6v)${MR[5]}\n" "$l6"
-printf "${DIM}                           ${NC}${MR[6]}\n"
+gap_pad=$(printf "%*s" "$gap" "")
+# Single line: CLAUDE version (left) + gap + right info
+echo -e "${left_colored}${gap_pad}${right_colored}"
+# Map
+echo -e "$top_border"
+echo -e "${B}║${NC} ${game} ${B}║${NC}"
+echo -e "$bot_border"
+# Limits
+[ -n "$limit_line" ] && echo -e "$limit_line"
