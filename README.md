@@ -1,5 +1,8 @@
 # Pac-Man Inspired Arcade Statusline for Claude Code
 
+![Downloads](https://img.shields.io/github/downloads/sorosora/arcade-statusline/total)
+![License](https://img.shields.io/github/license/sorosora/arcade-statusline)
+
 Turn your Claude Code status bar into a retro chase game. Context window usage drives Pac-Man across the board, while rate limit ghosts chase from behind.
 
 ## Preview
