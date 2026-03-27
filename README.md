@@ -22,13 +22,23 @@ Turn your Claude Code status bar into a retro chase game. Context window usage d
 
 ## Install
 
-One command:
+### macOS / Linux
 
 ```sh
 bash <(curl -fsSL https://raw.githubusercontent.com/sorosora/arcade-statusline/main/install.sh)
 ```
 
+### Windows (PowerShell 7+)
+
+Requires [PowerShell 7+](https://github.com/PowerShell/PowerShell) (`pwsh`). Run in a PowerShell 7 terminal:
+
+```powershell
+irm https://raw.githubusercontent.com/sorosora/arcade-statusline/main/install.ps1 | iex
+```
+
 ### Manual Install
+
+#### macOS / Linux
 
 1. Download the script:
    ```sh
@@ -47,10 +57,31 @@ bash <(curl -fsSL https://raw.githubusercontent.com/sorosora/arcade-statusline/m
    }
    ```
 
+#### Windows
+
+1. Download the script:
+   ```powershell
+   New-Item -ItemType Directory -Force "$env:USERPROFILE\.claude"
+   Invoke-WebRequest -Uri "https://github.com/sorosora/arcade-statusline/releases/latest/download/statusline.ps1" `
+     -OutFile "$env:USERPROFILE\.claude\statusline.ps1" -UseBasicParsing
+   ```
+
+2. Add to `%USERPROFILE%\.claude\settings.json`:
+   ```json
+   {
+     "statusLine": {
+       "type": "command",
+       "command": "pwsh -NoProfile -File \"%USERPROFILE%\\.claude\\statusline.ps1\""
+     }
+   }
+   ```
+
 ## Requirements
 
-- **bash** (4.0+)
-- **jq** -- for JSON parsing (`brew install jq` / `apt install jq`)
+| Platform | Requirements |
+|---|---|
+| macOS / Linux | bash 4.0+, jq (`brew install jq` / `apt install jq`) |
+| Windows | [PowerShell 7+](https://github.com/PowerShell/PowerShell) (`pwsh`) |
 
 ## How It Works
 
@@ -69,11 +100,17 @@ All percentages displayed are **remaining** (not used), so you always know how m
 
 ## Uninstall
 
+**macOS / Linux:**
 ```sh
 rm ~/.claude/statusline.sh
 ```
 
-Then remove the `"statusLine"` key from `~/.claude/settings.json`.
+**Windows:**
+```powershell
+Remove-Item "$env:USERPROFILE\.claude\statusline.ps1"
+```
+
+Then remove the `"statusLine"` key from `~/.claude/settings.json` (or `%USERPROFILE%\.claude\settings.json` on Windows).
 
 ## License
 
