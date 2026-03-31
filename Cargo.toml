@@ -1,6 +1,6 @@
 [package]
 name = "arcade-statusline"
-version = "0.1.0"
+version = "2.0.0"
 edition = "2024"
 description = "Arcade-style statusline for Claude Code"
 repository = "https://github.com/sorosora/arcade-statusline"
