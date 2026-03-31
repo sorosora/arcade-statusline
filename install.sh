@@ -92,6 +92,21 @@ JSONEOF
   fi
 fi
 
+# ── Generate default config ─────────────────────────────────────────────────
+CONF_FILE="$CLAUDE_DIR/arcade-statusline.conf"
+if [ ! -f "$CONF_FILE" ]; then
+  cat > "$CONF_FILE" <<'CONFEOF'
+# Arcade Statusline Configuration
+# DISPLAY_MODE: "remaining" (default) or "used"
+DISPLAY_MODE=remaining
+# MAX_WIDTH: maximum header line width (default: 54)
+MAX_WIDTH=54
+CONFEOF
+  info "Created default config at $CONF_FILE"
+else
+  info "Config file already exists (no changes needed)"
+fi
+
 # ── Done ────────────────────────────────────────────────────────────────────
 echo ""
 info "Installation complete!"

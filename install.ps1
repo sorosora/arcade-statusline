@@ -9,16 +9,16 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
 }
 
 # ── variables ─────────────────────────────────────────────────────────────────
-$ClaudeDir  = Join-Path $env:USERPROFILE '.claude'
+$ClaudeDir = Join-Path $env:USERPROFILE '.claude'
 $ScriptName = 'statusline.ps1'
-$Target     = Join-Path $ClaudeDir $ScriptName
-$Settings   = Join-Path $ClaudeDir 'settings.json'
-$RawUrl     = 'https://github.com/sorosora/arcade-statusline/releases/latest/download/statusline.ps1'
+$Target = Join-Path $ClaudeDir $ScriptName
+$Settings = Join-Path $ClaudeDir 'settings.json'
+$RawUrl = 'https://github.com/sorosora/arcade-statusline/releases/latest/download/statusline.ps1'
 
 # ── output helpers ────────────────────────────────────────────────────────────
-function Write-Info  { param($msg) Write-Host "[+] $msg" -ForegroundColor Green }
-function Write-Warn  { param($msg) Write-Host "[!] $msg" -ForegroundColor Yellow }
-function Write-Err   { param($msg) Write-Host "[x] $msg" -ForegroundColor Red }
+function Write-Info { param($msg) Write-Host "[+] $msg" -ForegroundColor Green }
+function Write-Warn { param($msg) Write-Host "[!] $msg" -ForegroundColor Yellow }
+function Write-Err { param($msg) Write-Host "[x] $msg" -ForegroundColor Red }
 
 # ── create directory ──────────────────────────────────────────────────────────
 New-Item -ItemType Directory -Force -Path $ClaudeDir | Out-Null
@@ -26,7 +26,7 @@ New-Item -ItemType Directory -Force -Path $ClaudeDir | Out-Null
 # ── backup existing script ────────────────────────────────────────────────────
 if (Test-Path $Target) {
     $timestamp = Get-Date -Format 'yyyyMMddHHmmss'
-    $backup    = "${Target}.bak.${timestamp}"
+    $backup = "${Target}.bak.${timestamp}"
     Copy-Item $Target $backup
     Write-Info "Backed up existing $ScriptName to $(Split-Path $backup -Leaf)"
 }
@@ -37,7 +37,8 @@ try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     Invoke-WebRequest -Uri $RawUrl -OutFile $Target -UseBasicParsing
     Write-Info "Saved to $Target"
-} catch {
+}
+catch {
     Write-Err "Failed to download ${ScriptName}: $_"
     exit 1
 }
@@ -49,26 +50,46 @@ if (Test-Path $Settings) {
     $raw = Get-Content $Settings -Raw -ErrorAction SilentlyContinue
     $json = if ($raw) {
         try { $raw | ConvertFrom-Json -ErrorAction Stop } catch { [PSCustomObject]@{} }
-    } else { [PSCustomObject]@{} }
+    }
+    else { [PSCustomObject]@{} }
 
     $currentCmd = $json.statusLine.command
     if ($currentCmd -eq $StatusCmd) {
         Write-Info "settings.json already configured (no changes needed)"
-    } else {
+    }
+    else {
         $statusLineObj = [PSCustomObject]@{ type = 'command'; command = $StatusCmd }
         if ($null -ne $json.statusLine) {
             $json.statusLine = $statusLineObj
-        } else {
+        }
+        else {
             $json | Add-Member -NotePropertyName 'statusLine' -NotePropertyValue $statusLineObj
         }
         $json | ConvertTo-Json -Depth 10 | Set-Content $Settings -Encoding UTF8
         Write-Info "Updated statusLine command in $Settings"
     }
-} else {
+}
+else {
     [PSCustomObject]@{
         statusLine = [PSCustomObject]@{ type = 'command'; command = $StatusCmd }
     } | ConvertTo-Json -Depth 10 | Set-Content $Settings -Encoding UTF8
     Write-Info "Created $Settings with statusLine config"
+}
+
+# ── generate default config ───────────────────────────────────────────────────
+$ConfFile = Join-Path $ClaudeDir 'arcade-statusline.conf'
+if (-not (Test-Path $ConfFile)) {
+    @'
+# Arcade Statusline Configuration
+# DISPLAY_MODE: "remaining" (default) or "used"
+DISPLAY_MODE=remaining
+# MAX_WIDTH: maximum header line width (default: 54)
+MAX_WIDTH=54
+'@ | Set-Content $ConfFile -Encoding UTF8
+    Write-Info "Created default config at $ConfFile"
+}
+else {
+    Write-Info "Config file already exists (no changes needed)"
 }
 
 # ── done ──────────────────────────────────────────────────────────────────────

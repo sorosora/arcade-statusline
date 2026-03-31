@@ -96,18 +96,39 @@ Claude Code pipes JSON status data to the script via stdin. The script maps metr
 | 95% context position | Cherry (ᐝ) = auto-compact warning |
 | Each refresh | Pac-Man chomps + ghosts animate |
 
-All percentages displayed are **remaining** (not used), so you always know how much is left.
+By default, percentages are displayed as **remaining** (not used). This can be changed to show used percentages — see [Configuration](#configuration).
+
+## Configuration
+
+Settings are stored in `~/.claude/arcade-statusline.conf` (`%USERPROFILE%\.claude\arcade-statusline.conf` on Windows). The installer creates a default config automatically.
+
+```conf
+# Arcade Statusline Configuration
+# DISPLAY_MODE: "remaining" (default) or "used"
+DISPLAY_MODE=remaining
+# MAX_WIDTH: maximum header line width (default: 80)
+MAX_WIDTH=80
+```
+
+| Setting | Values | Default | Description |
+|---------|--------|---------|-------------|
+| `DISPLAY_MODE` | `remaining` / `used` | `remaining` | Rate limit % shows remaining or used amount |
+| `MAX_WIDTH` | integer | `80` | Maximum header line width in characters |
+
+Settings can also be overridden with environment variables: `ARCADE_DISPLAY_MODE`, `ARCADE_MAX_WIDTH`.
 
 ## Uninstall
 
 **macOS / Linux:**
 ```sh
 rm ~/.claude/statusline.sh
+rm ~/.claude/arcade-statusline.conf  # optional: remove config
 ```
 
 **Windows:**
 ```powershell
 Remove-Item "$env:USERPROFILE\.claude\statusline.ps1"
+Remove-Item "$env:USERPROFILE\.claude\arcade-statusline.conf"  # optional: remove config
 ```
 
 Then remove the `"statusLine"` key from `~/.claude/settings.json` (or `%USERPROFILE%\.claude\settings.json` on Windows).
