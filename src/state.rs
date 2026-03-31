@@ -1,16 +1,30 @@
 use crate::models::{Input, RawState, SlotRecord};
 use std::fs;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const STATE_PATH: &str = "/tmp/.claude-statusline-state.json";
 const SLOT_MINUTES: u64 = 15;
 const TRAIL_SLOTS: u64 = 36; // 9 hours
 
+static SLOT_OFFSET: AtomicI64 = AtomicI64::new(0);
+
+pub fn set_slot_offset(offset: i64) {
+    SLOT_OFFSET.store(offset, Ordering::Relaxed);
+}
+
 pub fn now_epoch() -> u64 {
-    SystemTime::now()
+    let real = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
-        .as_secs()
+        .as_secs();
+    // When slot-offset is set, shift time accordingly (1 slot = 15 min)
+    let offset = SLOT_OFFSET.load(Ordering::Relaxed);
+    if offset >= 0 {
+        real + offset as u64 * SLOT_MINUTES * 60
+    } else {
+        real.saturating_sub(offset.unsigned_abs() * SLOT_MINUTES * 60)
+    }
 }
 
 pub fn current_slot() -> u64 {

@@ -8,7 +8,7 @@ use std::io::Read;
 use themes::Theme;
 
 fn main() {
-    // Parse --theme argument
+    // Parse arguments
     let args: Vec<String> = std::env::args().collect();
     let theme_name = args.iter()
         .position(|a| a == "--theme")
@@ -16,19 +16,30 @@ fn main() {
         .map(|s| s.as_str())
         .unwrap_or("pacman");
 
+    let demo_mode = args.iter()
+        .position(|a| a == "--slot-offset")
+        .and_then(|i| args.get(i + 1))
+        .and_then(|s| s.parse::<i64>().ok());
+
+    if let Some(offset) = demo_mode {
+        state::set_slot_offset(offset);
+    }
+
     // Read JSON from stdin
     let mut input_str = String::new();
     std::io::stdin().read_to_string(&mut input_str).unwrap_or_default();
 
     let input: Input = serde_json::from_str(&input_str).unwrap_or_default();
 
-    // Load and update shared state — use parent PID as session ID
-    // so the same Claude Code process gets a stable ID across statusline calls
-    // (mirrors shell's $$ which is the calling shell's PID)
-    let session_id = std::os::unix::process::parent_id().to_string();
     let mut raw_state = state::load();
-    state::update(&mut raw_state, &input, &session_id);
-    state::save(&raw_state);
+
+    if demo_mode.is_none() {
+        // Normal mode: update and persist state
+        let session_id = std::os::unix::process::parent_id().to_string();
+        state::update(&mut raw_state, &input, &session_id);
+        state::save(&raw_state);
+    }
+    // Demo mode: read-only, don't modify state
 
     // Render with selected theme
     let output = match theme_name {

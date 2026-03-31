@@ -93,11 +93,11 @@ impl Theme for Pacman {
         }
 
         // Resolve pending ghost positions
-        if five.is_some() && !game_over && five_int < 100 {
+        if five.is_some() && five_int < 100 {
             let g1_start = room_w;
             g1 = (g1_start + five_int * pac_pos.saturating_sub(g1_start) / 100) as i32;
         }
-        if week.is_some() && !g2_caged && !game_over && week_int < 100 {
+        if week.is_some() && !g2_caged && week_int < 100 {
             g2 = (week_int * pac_pos / 100) as i32;
         }
 
@@ -115,18 +115,7 @@ impl Theme for Pacman {
             if g2 >= 0 && g2 as usize == pac_pos && pac_pos > 0 { g2 = pac_pos as i32 - 1; }
         }
 
-        // GAME OVER text position
-        let go_text = " GAME OVER";
-        let mut go_start: i32 = -1;
-        if game_over {
-            go_start = pac_pos as i32 + 1;
-            if go_start as usize + go_text.len() > MAP_W {
-                go_start = (MAP_W - go_text.len()) as i32;
-                if go_start <= pac_pos as i32 {
-                    go_start = pac_pos as i32 + 1;
-                }
-            }
-        }
+        // GAME OVER removed from game line — shown in footer instead
 
         // Cherry at 95% context
         let cherry_pos = PAC_MIN + 95 * (MAP_W - 1 - PAC_MIN) / 100;
@@ -146,19 +135,7 @@ impl Theme for Pacman {
         }
 
         for i in room_w..MAP_W {
-            if game_over && go_start >= 0
-                && i >= go_start as usize
-                && i < go_start as usize + go_text.len()
-            {
-                // GAME OVER text
-                let ci = i - go_start as usize;
-                let ch = go_text.as_bytes()[ci] as char;
-                if ch == ' ' {
-                    game.push(' ');
-                } else {
-                    game += &format!("{RED}{ch}{NC}");
-                }
-            } else if game_over && i == pac_pos {
+            if game_over && i == pac_pos {
                 // Ghost caught pac-man
                 if g1 >= 0 && g1 as usize == pac_pos {
                     game += &format!("{RED}{g1_char}{NC}");
@@ -244,6 +221,21 @@ impl Theme for Pacman {
                 }
             }
 
+            if game_over {
+                let go_text = format!("{RED}GAME OVER{NC}");
+                let go_plain_len = 9; // "GAME OVER"
+                // Estimate visible length by counting non-escape chars
+                let mut vis_len = 0usize;
+                let mut in_esc = false;
+                for c in limit_line.chars() {
+                    if c == '\x1b' { in_esc = true; }
+                    else if in_esc { if c.is_ascii_alphabetic() { in_esc = false; } }
+                    else { vis_len += 1; }
+                }
+                let go_gap = TOTAL_W.saturating_sub(vis_len + go_plain_len).max(2);
+                limit_line += &" ".repeat(go_gap);
+                limit_line += &go_text;
+            }
             footer = format!("\n{limit_line}");
         }
 
