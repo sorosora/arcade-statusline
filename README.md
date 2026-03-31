@@ -66,15 +66,15 @@ To change theme later, run the installer again or edit `--theme` in `~/.claude/s
 <summary>Download binary manually</summary>
 
 ```sh
-mkdir -p ~/.claude
+mkdir -p ~/.claude && cd ~/.claude
 # macOS (Apple Silicon)
-curl -fsSL -L https://github.com/sorosora/arcade-statusline/releases/latest/download/arcade-statusline-aarch64-apple-darwin -o ~/.claude/arcade-statusline
+curl -fsSL -L https://github.com/sorosora/arcade-statusline/releases/latest/download/arcade-statusline-aarch64-apple-darwin.tar.xz | tar xJ
 # macOS (Intel)
-curl -fsSL -L https://github.com/sorosora/arcade-statusline/releases/latest/download/arcade-statusline-x86_64-apple-darwin -o ~/.claude/arcade-statusline
+curl -fsSL -L https://github.com/sorosora/arcade-statusline/releases/latest/download/arcade-statusline-x86_64-apple-darwin.tar.xz | tar xJ
 # Linux (x86_64)
-curl -fsSL -L https://github.com/sorosora/arcade-statusline/releases/latest/download/arcade-statusline-x86_64-unknown-linux-gnu -o ~/.claude/arcade-statusline
+curl -fsSL -L https://github.com/sorosora/arcade-statusline/releases/latest/download/arcade-statusline-x86_64-unknown-linux-gnu.tar.xz | tar xJ
 
-chmod +x ~/.claude/arcade-statusline
+chmod +x arcade-statusline
 ```
 
 Add to `~/.claude/settings.json`:

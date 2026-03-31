@@ -50,8 +50,8 @@ case "$ARCH" in
   *)             error "Unsupported architecture: $ARCH"; exit 1 ;;
 esac
 
-ASSET="${BIN_NAME}-${ARCH_TAG}-${OS_TAG}"
-DOWNLOAD_URL="${BASE_URL}/${ASSET}"
+ARCHIVE="${BIN_NAME}-${ARCH_TAG}-${OS_TAG}.tar.xz"
+DOWNLOAD_URL="${BASE_URL}/${ARCHIVE}"
 
 info "Detected platform: ${ARCH_TAG}-${OS_TAG}"
 
@@ -75,12 +75,17 @@ if [ -f "$LOCAL_BIN" ]; then
   chmod +x "$TARGET"
   info "Copied to $TARGET"
 else
-  info "Downloading $ASSET..."
-  if curl -fsSL -L "$DOWNLOAD_URL" -o "$TARGET"; then
+  info "Downloading $ARCHIVE..."
+  TMPDIR=$(mktemp -d)
+  if curl -fsSL -L "$DOWNLOAD_URL" -o "$TMPDIR/$ARCHIVE"; then
+    tar -xf "$TMPDIR/$ARCHIVE" -C "$TMPDIR"
+    cp "$TMPDIR/$BIN_NAME" "$TARGET"
     chmod +x "$TARGET"
+    rm -rf "$TMPDIR"
     info "Saved to $TARGET"
   else
-    error "Failed to download $ASSET"
+    rm -rf "$TMPDIR"
+    error "Failed to download $ARCHIVE"
     error "URL: $DOWNLOAD_URL"
     exit 1
   fi

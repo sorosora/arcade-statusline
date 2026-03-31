@@ -20,8 +20,8 @@ $Arch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture 
     'x86_64'
 }
 
-$Asset = "arcade-statusline-${Arch}-pc-windows-msvc.exe"
-$DownloadUrl = "${BaseUrl}/${Asset}"
+$Archive = "arcade-statusline-${Arch}-pc-windows-msvc.zip"
+$DownloadUrl = "${BaseUrl}/${Archive}"
 
 Write-Info "Detected platform: ${Arch}-pc-windows-msvc"
 
@@ -37,13 +37,20 @@ if (Test-Path $Target) {
 }
 
 # ── download binary ───────────────────────────────────────────────────────────
-Write-Info "Downloading $Asset..."
+Write-Info "Downloading $Archive..."
+$TmpDir = Join-Path $env:TEMP "arcade-statusline-install"
+New-Item -ItemType Directory -Force -Path $TmpDir | Out-Null
+$ZipPath = Join-Path $TmpDir $Archive
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -Uri $DownloadUrl -OutFile $Target -UseBasicParsing
+    Invoke-WebRequest -Uri $DownloadUrl -OutFile $ZipPath -UseBasicParsing
+    Expand-Archive -Path $ZipPath -DestinationPath $TmpDir -Force
+    Copy-Item (Join-Path $TmpDir $BinName) $Target -Force
+    Remove-Item $TmpDir -Recurse -Force
     Write-Info "Saved to $Target"
 } catch {
-    Write-Err "Failed to download ${Asset}: $_"
+    Remove-Item $TmpDir -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Err "Failed to download ${Archive}: $_"
     Write-Err "URL: $DownloadUrl"
     exit 1
 }
