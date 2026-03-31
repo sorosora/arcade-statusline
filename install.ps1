@@ -1,49 +1,89 @@
 #!/usr/bin/env pwsh
-# Installer for Pac-Man inspired Claude Code statusline (Windows / PowerShell 7+)
-
-# ── version check ─────────────────────────────────────────────────────────────
-if ($PSVersionTable.PSVersion.Major -lt 7) {
-    Write-Host "[x] PowerShell 7+ is required." -ForegroundColor Red
-    Write-Host "    Install from: https://github.com/PowerShell/PowerShell" -ForegroundColor Red
-    exit 1
-}
+# Installer for arcade-statusline (Rust binary) — Windows / PowerShell 7+
 
 # ── variables ─────────────────────────────────────────────────────────────────
-$ClaudeDir  = Join-Path $env:USERPROFILE '.claude'
-$ScriptName = 'statusline.ps1'
-$Target     = Join-Path $ClaudeDir $ScriptName
-$Settings   = Join-Path $ClaudeDir 'settings.json'
-$RawUrl     = 'https://github.com/sorosora/arcade-statusline/releases/latest/download/statusline.ps1'
+$ClaudeDir = Join-Path $env:USERPROFILE '.claude'
+$BinName   = 'arcade-statusline.exe'
+$Target    = Join-Path $ClaudeDir $BinName
+$Settings  = Join-Path $ClaudeDir 'settings.json'
+$BaseUrl   = 'https://github.com/sorosora/arcade-statusline/releases/latest/download'
 
 # ── output helpers ────────────────────────────────────────────────────────────
 function Write-Info  { param($msg) Write-Host "[+] $msg" -ForegroundColor Green }
 function Write-Warn  { param($msg) Write-Host "[!] $msg" -ForegroundColor Yellow }
 function Write-Err   { param($msg) Write-Host "[x] $msg" -ForegroundColor Red }
 
+# ── detect architecture ───────────────────────────────────────────────────────
+$Arch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') {
+    'aarch64'
+} else {
+    'x86_64'
+}
+
+$Archive = "arcade-statusline-${Arch}-pc-windows-msvc.zip"
+$DownloadUrl = "${BaseUrl}/${Archive}"
+
+Write-Info "Detected platform: ${Arch}-pc-windows-msvc"
+
 # ── create directory ──────────────────────────────────────────────────────────
 New-Item -ItemType Directory -Force -Path $ClaudeDir | Out-Null
 
-# ── backup existing script ────────────────────────────────────────────────────
+# ── backup existing binary ────────────────────────────────────────────────────
 if (Test-Path $Target) {
     $timestamp = Get-Date -Format 'yyyyMMddHHmmss'
     $backup    = "${Target}.bak.${timestamp}"
     Copy-Item $Target $backup
-    Write-Info "Backed up existing $ScriptName to $(Split-Path $backup -Leaf)"
+    Write-Info "Backed up existing $BinName to $(Split-Path $backup -Leaf)"
 }
 
-# ── download statusline.ps1 ───────────────────────────────────────────────────
-Write-Info "Downloading $ScriptName..."
+# ── download binary ───────────────────────────────────────────────────────────
+Write-Info "Downloading $Archive..."
+$TmpDir = Join-Path $env:TEMP "arcade-statusline-install"
+New-Item -ItemType Directory -Force -Path $TmpDir | Out-Null
+$ZipPath = Join-Path $TmpDir $Archive
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -Uri $RawUrl -OutFile $Target -UseBasicParsing
+    Invoke-WebRequest -Uri $DownloadUrl -OutFile $ZipPath -UseBasicParsing
+    Expand-Archive -Path $ZipPath -DestinationPath $TmpDir -Force
+    Copy-Item (Join-Path $TmpDir $BinName) $Target -Force
+    Remove-Item $TmpDir -Recurse -Force
     Write-Info "Saved to $Target"
 } catch {
-    Write-Err "Failed to download ${ScriptName}: $_"
+    Remove-Item $TmpDir -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Err "Failed to download ${Archive}: $_"
+    Write-Err "URL: $DownloadUrl"
     exit 1
 }
 
+# ── theme selection ────────────────────────────────────────────────────────────
+$NowEpoch = [int][double]::Parse((Get-Date -UFormat %s))
+$Sample = @"
+{"model":"Claude Opus 4.6","version":"1.0.0","context_window":{"used_percentage":35,"context_window_size":1000000},"rate_limits":{"five_hour":{"used_percentage":28,"resets_at":$($NowEpoch + 7200)},"seven_day":{"used_percentage":15,"resets_at":$($NowEpoch + 259200)}}}
+"@
+
+Write-Host ''
+Write-Host '  Choose a theme:'
+Write-Host ''
+Write-Host '  +-------------------------------------------------------------------+'
+Write-Host '  |  1) Pac-Man                                                       |'
+Write-Host '  +-------------------------------------------------------------------+'
+Write-Host ''
+$Sample | & $Target --theme pacman
+Write-Host ''
+Write-Host '  +-------------------------------------------------------------------+'
+Write-Host '  |  2) Pikmin Bloom                                                  |'
+Write-Host '  +-------------------------------------------------------------------+'
+Write-Host ''
+$Sample | & $Target --theme pikmin
+Write-Host ''
+
+$choice = Read-Host '  Enter choice [1/2] (default: 1)'
+$Theme = if ($choice -eq '2') { 'pikmin' } else { 'pacman' }
+
+Write-Info "Selected theme: $Theme"
+
 # ── configure settings.json ───────────────────────────────────────────────────
-$StatusCmd = "pwsh -NoProfile -File `"$Target`""
+$StatusCmd = "`"$Target`" --theme $Theme"
 
 if (Test-Path $Settings) {
     $raw = Get-Content $Settings -Raw -ErrorAction SilentlyContinue
@@ -75,8 +115,7 @@ if (Test-Path $Settings) {
 Write-Host ''
 Write-Info 'Installation complete!'
 Write-Host ''
-Write-Host '  The Pac-Man statusline will appear automatically in Claude Code.'
-Write-Host '  To preview it manually:'
-Write-Host ''
-Write-Host "    echo '{}' | pwsh -NoProfile -File `"$Target`""
+Write-Host '  The statusline will appear automatically in Claude Code.'
+Write-Host "  To change theme later, edit $Settings"
+Write-Host '  and set --theme to pacman or pikmin.'
 Write-Host ''
