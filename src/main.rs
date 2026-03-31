@@ -7,6 +7,16 @@ use models::Input;
 use std::io::Read;
 use themes::Theme;
 
+#[cfg(unix)]
+fn parent_id() -> u32 {
+    std::os::unix::process::parent_id()
+}
+
+#[cfg(windows)]
+fn parent_id() -> u32 {
+    std::process::id()
+}
+
 fn main() {
     // Parse arguments
     let args: Vec<String> = std::env::args().collect();
@@ -35,7 +45,7 @@ fn main() {
 
     if demo_mode.is_none() {
         // Normal mode: update and persist state
-        let session_id = std::os::unix::process::parent_id().to_string();
+        let session_id = parent_id().to_string();
         state::update(&mut raw_state, &input, &session_id);
         state::save(&raw_state);
     }
