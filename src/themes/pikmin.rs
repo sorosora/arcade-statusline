@@ -130,8 +130,8 @@ impl Theme for Pikmin {
         if !ctx_size.is_empty() {
             right_plain += &format!("{ctx_size} ");
         }
-        right_plain += &format!("Context {ctx_remain}% left");
-        let right_len = right_plain.len() + 1; // +1 for flower replacing 'o'
+        right_plain += &format!("Context X{ctx_remain}% left");
+        let right_len = right_plain.len() + 1; // +1 for flower (2-col emoji replacing 1-col X)
 
         let gap = (MAP_W.saturating_sub(left_len + right_len)).max(2);
         let gap_pad = " ".repeat(gap);
@@ -149,7 +149,7 @@ impl Theme for Pikmin {
             right_colored += &format!("{DIM}{ctx_size}{NC} ");
         }
         let ctx_c = colour_remain(ctx_remain);
-        right_colored += &format!("{DIM}C{NC}{next_flower}{HS}{DIM}ntext{NC} {ctx_c} {DIM}left{NC}");
+        right_colored += &format!("{DIM}Context{NC} {next_flower}{HS}{ctx_c} {DIM}left{NC}");
 
         let header = format!("{left_colored}{gap_pad}{right_colored}");
 
@@ -219,7 +219,7 @@ impl Theme for Pikmin {
         let (footer_right, footer_right_cols) = if rate_hit {
             ("Ha! ▶️", 7usize)
         } else {
-            ("✨Bloom! ⏹️", 10usize)
+            ("✨Bloom!⏹️", 10usize)
         };
 
         let footer_gap = MAP_W.saturating_sub(footer_left_plain.len() + footer_right_cols).max(2);

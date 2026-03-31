@@ -22,8 +22,10 @@ fn main() {
 
     let input: Input = serde_json::from_str(&input_str).unwrap_or_default();
 
-    // Load and update shared state
-    let session_id = std::process::id().to_string();
+    // Load and update shared state — use parent PID as session ID
+    // so the same Claude Code process gets a stable ID across statusline calls
+    // (mirrors shell's $$ which is the calling shell's PID)
+    let session_id = std::os::unix::process::parent_id().to_string();
     let mut raw_state = state::load();
     state::update(&mut raw_state, &input, &session_id);
     state::save(&raw_state);
