@@ -13,9 +13,10 @@ serde_json = "1"
 [profile.release]
 strip = true
 lto = true
-opt-level = "s"
+opt-level = "z"
+codegen-units = 1
+panic = "abort"
 
 # The profile that 'dist' will build with
 [profile.dist]
 inherits = "release"
-lto = "thin"
