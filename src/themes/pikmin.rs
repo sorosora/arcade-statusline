@@ -3,9 +3,8 @@ use crate::models::{Input, RawState};
 use crate::state::{current_slot, slot_pos};
 use crate::themes::Theme;
 
-const TRAIL_SLOTS: u64 = 36;
+const DEFAULT_TRAIL_SLOTS: u64 = 36;
 const FUTURE_SLOTS: u64 = 4;
-const MAP_W: usize = 54;
 
 const SMALL_FLOWERS: [&str; 3] = ["🌸", "🌺", "🌼"];
 const BIG_FLOWERS: [&str; 3] = ["🪻", "🌻", "🌷"];
@@ -40,17 +39,22 @@ fn pikmin_squad() -> &'static str {
     }
 }
 
-/// Render a single slot's display characters
-fn render_slot(val: &str, pos: u8) -> String {
+/// Render a single slot's display characters.
+/// `narrow_emoji`: true when terminal renders emoji as 1 col (JetBrains) — add HS to compensate.
+fn render_slot(val: &str, pos: u8, narrow_emoji: bool) -> String {
     let is_wide = pos == 0 || pos == 7;
     if val == "·" || val.is_empty() {
-        if is_wide {
-            format!("{DIM}·{NC}{DIM}·{NC}")
+        if narrow_emoji {
+            if is_wide {
+                format!("{DIM}·{NC}{DIM}·{NC}")
+            } else {
+                format!("{DIM}·{NC}")
+            }
         } else {
-            format!("{DIM}·{NC}")
+            format!("{DIM}·{NC} ") // 2 cols to match emoji width
         }
     } else if is_wide {
-        format!("{val}{HS}")
+        if narrow_emoji { format!("{val}{HS}") } else { format!("{val}") }
     } else {
         val.to_string()
     }
@@ -85,10 +89,14 @@ fn future_content(slot: u64, five_reset_slot: Option<u64>, week_reset_slot: Opti
     }
 }
 
-pub struct Pikmin;
+pub struct Pikmin {
+    pub narrow_emoji: bool,
+    pub buddy_padding: bool,
+}
 
 impl Theme for Pikmin {
-    fn render(&self, input: &Input, state: &RawState) -> String {
+    fn render(&self, input: &Input, state: &RawState, _max_width: usize) -> String {
+        let ne = self.narrow_emoji;
         let slot = current_slot();
         let ctx_remain = input.context_window.remain();
         let five = &input.rate_limits.five_hour;
@@ -105,7 +113,32 @@ impl Theme for Pikmin {
             .and_then(|r| r.resets_at)
             .map(|t| t / slot_secs);
 
-        // Next flower for header
+        // ── Game line (build first to determine map_w) ──────────────
+        let pikmin = pikmin_squad();
+        let mut game = String::new();
+
+        // Trail
+        for s in (slot - DEFAULT_TRAIL_SLOTS + 1)..=slot {
+            let content = trail_content(s, state);
+            let pos = slot_pos(s);
+            game += &render_slot(content, pos, ne);
+        }
+
+        // Pikmin
+        let squad_spacer = if ne { HS } else { "" };
+        game += &format!("{pikmin}{squad_spacer}");
+
+        // Future
+        for s in (slot + 1)..=(slot + FUTURE_SLOTS) {
+            let content = future_content(s, five_reset_slot, week_reset_slot);
+            let pos = slot_pos(s);
+            game += &render_slot(content, pos, ne);
+        }
+
+        // Derive map_w from game line's actual visible width (terminal-aware)
+        let map_w = visible_width_ex(&game, ne);
+
+        // ── Header ──────────────────────────────────────────────────
         let next_pos = slot_pos(slot + 1);
         let next_flower = if next_pos == 0 {
             pick_big(slot + 1)
@@ -113,7 +146,6 @@ impl Theme for Pikmin {
             pick_small(slot + 1)
         };
 
-        // ── Header ──────────────────────────────────────────────────
         let mut left_plain = "CLAUDE".to_string();
         if let Some(v) = &input.version {
             left_plain += &format!(" v{v}");
@@ -131,9 +163,10 @@ impl Theme for Pikmin {
             right_plain += &format!("{ctx_size} ");
         }
         right_plain += &format!("Context X{ctx_remain}% left");
-        let right_len = right_plain.len() + 1; // +1 for flower (2-col emoji replacing 1-col X)
+        // emoji(2 in normal, 1+HS in narrow) replacing X(1) → +1
+        let right_len = right_plain.len() + 1;
 
-        let gap = (MAP_W.saturating_sub(left_len + right_len)).max(2);
+        let gap = (map_w.saturating_sub(left_len + right_len)).max(2);
         let gap_pad = " ".repeat(gap);
 
         let mut left_colored = format!("{ORANGE}CLAUDE{NC}");
@@ -149,38 +182,18 @@ impl Theme for Pikmin {
             right_colored += &format!("{DIM}{ctx_size}{NC} ");
         }
         let ctx_c = colour_remain(ctx_remain);
-        right_colored += &format!("{DIM}Context{NC} {next_flower}{HS}{ctx_c} {DIM}left{NC}");
+        let flower_spacer = if ne { HS } else { "" };
+        right_colored += &format!("{DIM}Context{NC} {next_flower}{flower_spacer}{ctx_c} {DIM}left{NC}");
 
         let header = format!("{left_colored}{gap_pad}{right_colored}");
 
         // ── Sky ─────────────────────────────────────────────────────
         let sky_color = "\x1b[38;5;39m";
-        let sky: String = (0..MAP_W).map(|_| format!("{sky_color}█{NC}")).collect();
-
-        // ── Game line ───────────────────────────────────────────────
-        let pikmin = pikmin_squad();
-        let mut game = String::new();
-
-        // Trail
-        for s in (slot - TRAIL_SLOTS + 1)..=slot {
-            let content = trail_content(s, state);
-            let pos = slot_pos(s);
-            game += &render_slot(content, pos);
-        }
-
-        // Pikmin
-        game += &format!("{pikmin}{HS}");
-
-        // Future
-        for s in (slot + 1)..=(slot + FUTURE_SLOTS) {
-            let content = future_content(s, five_reset_slot, week_reset_slot);
-            let pos = slot_pos(s);
-            game += &render_slot(content, pos);
-        }
+        let sky: String = (0..map_w).map(|_| format!("{sky_color}█{NC}")).collect();
 
         // ── Grass ───────────────────────────────────────────────────
         let grass_color = "\x1b[38;5;28m";
-        let grass: String = (0..MAP_W).map(|_| format!("{grass_color}▀{NC}")).collect();
+        let grass: String = (0..map_w).map(|_| format!("{grass_color}▀{NC}")).collect();
 
         // ── Footer ──────────────────────────────────────────────────
         let mut footer_left = String::new();
@@ -194,7 +207,8 @@ impl Theme for Pikmin {
             if let Some(reset) = w.resets_at {
                 let rs = fmt_reset(reset);
                 let fruit = pick_fruit(week_reset_slot.unwrap_or(0));
-                footer_left += &format!(" {fruit}{HS}{DIM}{rs}{NC}");
+                let fs = if ne { HS } else { "" };
+                footer_left += &format!(" {fruit}{fs}{DIM}{rs}{NC}");
                 footer_left_plain += &format!(" XX{rs}");
             }
         }
@@ -211,7 +225,8 @@ impl Theme for Pikmin {
             if let Some(reset) = f.resets_at {
                 let rs = fmt_reset(reset);
                 let fruit = pick_fruit(five_reset_slot.unwrap_or(0));
-                footer_left += &format!(" {fruit}{HS}{DIM}{rs}{NC}");
+                let fs = if ne { HS } else { "" };
+                footer_left += &format!(" {fruit}{fs}{DIM}{rs}{NC}");
                 footer_left_plain += &format!(" XX{rs}");
             }
         }
@@ -222,12 +237,38 @@ impl Theme for Pikmin {
             ("✨Bloom!⏹️", 10usize)
         };
 
-        let footer_gap = MAP_W.saturating_sub(footer_left_plain.len() + footer_right_cols).max(2);
+        let footer_gap = map_w.saturating_sub(footer_left_plain.len() + footer_right_cols).max(2);
         let footer_pad = " ".repeat(footer_gap);
         let footer = format!("{footer_left}{footer_pad}{footer_right}");
 
-        // ── Combine ─────────────────────────────────────────────────
-        format!("{header}\n{sky}\n{game}\n{grass}\n{footer}")
+        // ── Combine: pad all lines to uniform visible width ─────────
+        let lines = [&header, &sky, &game, &grass, &footer];
+        let max_vis = lines.iter().map(|l| visible_width_ex(l, ne)).max().unwrap_or(map_w);
+        let target = max_vis.max(map_w);
+        let bp = self.buddy_padding;
+        let top_pad = if bp {
+            let blank: String = (0..target).map(|_| format!("{DIM}·{NC}")).collect();
+            format!("{blank}\n")
+        } else {
+            String::new()
+        };
+        let mut result = format!(
+            "{}{}\n{}\n{}\n{}\n{}",
+            top_pad,
+            pad_to_width_ex(&header, target, ne),
+            pad_to_width_ex(&sky, target, ne),
+            pad_to_width_ex(&game, target, ne),
+            pad_to_width_ex(&grass, target, ne),
+            pad_to_width_ex(&footer, target, ne),
+        );
+        if bp {
+            let blank: String = (0..target).map(|_| format!("{DIM}·{NC}")).collect();
+            for _ in 0..5 {
+                result.push('\n');
+                result.push_str(&blank);
+            }
+        }
+        result
     }
 }
 
@@ -296,23 +337,29 @@ mod tests {
     }
 
     #[test]
-    fn test_render_slot_wide_with_flower() {
-        let result = render_slot("🌻", 0);
+    fn test_render_slot_wide_with_flower_narrow() {
+        let result = render_slot("🌻", 0, true);
         assert!(result.contains("🌻"));
-        assert!(result.contains("\x1b[8m")); // hidden spacer
+        assert!(result.contains("\x1b[8m")); // hidden spacer for narrow emoji
     }
 
     #[test]
-    fn test_render_slot_wide_empty() {
-        let result = render_slot("·", 0);
-        // Two dim dots
-        assert!(result.contains("·"));
+    fn test_render_slot_wide_with_flower_normal() {
+        let result = render_slot("🌻", 0, false);
+        assert!(result.contains("🌻"));
         assert!(!result.contains("\x1b[8m")); // no hidden spacer
     }
 
     #[test]
+    fn test_render_slot_wide_empty() {
+        let result = render_slot("·", 0, false);
+        assert!(result.contains("·"));
+        assert!(!result.contains("\x1b[8m"));
+    }
+
+    #[test]
     fn test_render_slot_normal() {
-        let result = render_slot("🌸", 3);
+        let result = render_slot("🌸", 3, false);
         assert_eq!(result, "🌸");
     }
 }

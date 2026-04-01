@@ -49,6 +49,66 @@ pub const NC: &str = "\x1b[0m";
 pub const DIM: &str = "\x1b[2m";
 pub const ORANGE: &str = "\x1b[38;5;208m";
 
+/// Calculate visible display width of a string containing ANSI escape codes and emoji.
+/// `narrow_emoji`: if true, treat emoji as 1 col (JetBrains JediTerm behaviour).
+pub fn visible_width_ex(s: &str, narrow_emoji: bool) -> usize {
+    let mut width = 0;
+    let mut in_esc = false;
+    for c in s.chars() {
+        if c == '\x1b' {
+            in_esc = true;
+            continue;
+        }
+        if in_esc {
+            if c.is_ascii_alphabetic() {
+                in_esc = false;
+            }
+            continue;
+        }
+        width += char_width(c, narrow_emoji);
+    }
+    width
+}
+
+/// Convenience: visible width assuming standard emoji (2 cols).
+pub fn visible_width(s: &str) -> usize {
+    visible_width_ex(s, false)
+}
+
+fn char_width(c: char, narrow_emoji: bool) -> usize {
+    let cp = c as u32;
+    match cp {
+        // Zero-width: ZWJ, variation selectors
+        0x200D | 0xFE00..=0xFE0F => 0,
+        // Emoji & symbols
+        0x1F000..=0x1FFFF | 0x23E9..=0x23FA | 0x2600..=0x27BF | 0x2B50..=0x2B55 => {
+            if narrow_emoji { 1 } else { 2 }
+        }
+        // Everything else
+        _ => 1,
+    }
+}
+
+/// Pad a line with trailing spaces so its visible width equals `target`.
+pub fn pad_to_width(s: &str, target: usize) -> String {
+    let w = visible_width(s);
+    if w >= target {
+        s.to_string()
+    } else {
+        format!("{}{}", s, " ".repeat(target - w))
+    }
+}
+
+/// Pad using narrow_emoji-aware width calculation.
+pub fn pad_to_width_ex(s: &str, target: usize, narrow_emoji: bool) -> String {
+    let w = visible_width_ex(s, narrow_emoji);
+    if w >= target {
+        s.to_string()
+    } else {
+        format!("{}{}", s, " ".repeat(target - w))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -90,6 +90,26 @@ Add to `~/.claude/settings.json`:
 
 </details>
 
+### Options
+
+| Flag | Description |
+|---|---|
+| `--theme <NAME>` | Theme: `pacman` (default), `pikmin` |
+| `--width <N>` | Override statusline width (auto-detected from terminal) |
+| `--narrow-emoji` | Force narrow emoji mode (auto-detected for JetBrains) |
+| `--buddy-padding` | Add padding lines for Claude Code buddy alignment (JetBrains only) |
+
+**JetBrains users:** JetBrains terminals render emoji as 1 column instead of 2 ([IJPL-106227](https://youtrack.jetbrains.com/issue/IJPL-106227)). The binary auto-detects this and compensates. If the Claude Code buddy overlaps with your statusline, add `--buddy-padding`:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/arcade-statusline --theme pikmin --buddy-padding"
+  }
+}
+```
+
 <details>
 <summary>Build from source</summary>
 

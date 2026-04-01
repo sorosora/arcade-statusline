@@ -2,12 +2,10 @@ use crate::helpers::*;
 use crate::models::{Input, RawState};
 use crate::themes::Theme;
 
-// Original bash layout: MAP_W=50 inner + 2 border + 2 padding = TOTAL_W=54
-const MAP_W: usize = 50;
+const DEFAULT_TOTAL_W: usize = 54;
+const MIN_TOTAL_W: usize = 30;
 const PAD: usize = 1;
-const TOTAL_W: usize = MAP_W + 2 + PAD * 2; // 54
-
-const PAC_MIN: usize = 12;
+const BORDER: usize = 2; // left + right border chars
 
 const ANIM_PATH: &str = "/tmp/.claude-pacman-chomp";
 
@@ -43,7 +41,11 @@ fn rep_hline(n: usize) -> String {
 pub struct Pacman;
 
 impl Theme for Pacman {
-    fn render(&self, input: &Input, _state: &RawState) -> String {
+    fn render(&self, input: &Input, _state: &RawState, max_width: usize) -> String {
+        let total_w = max_width.clamp(MIN_TOTAL_W, DEFAULT_TOTAL_W);
+        let map_w = total_w - BORDER - PAD * 2;
+        let pac_min = map_w.min(12);
+
         let ctx_int = input.context_window.used_int() as usize;
         let ctx_remain = input.context_window.remain();
         let five = &input.rate_limits.five_hour;
@@ -57,9 +59,9 @@ impl Theme for Pacman {
         let (pac_char, g1_char, g2_char) = animation();
 
         // ── Positions ───────────────────────────────────────────────
-        let mut pac_pos = PAC_MIN + ctx_int * (MAP_W - 1 - PAC_MIN) / 100;
-        if pac_pos < PAC_MIN { pac_pos = PAC_MIN; }
-        if pac_pos >= MAP_W { pac_pos = MAP_W - 1; }
+        let mut pac_pos = pac_min + ctx_int * (map_w - 1 - pac_min) / 100;
+        if pac_pos < pac_min { pac_pos = pac_min; }
+        if pac_pos >= map_w { pac_pos = map_w - 1; }
 
         let mut g1: i32 = -1;
         let mut g2: i32 = -1;
@@ -118,7 +120,7 @@ impl Theme for Pacman {
         // GAME OVER removed from game line — shown in footer instead
 
         // Cherry at 95% context
-        let cherry_pos = PAC_MIN + 95 * (MAP_W - 1 - PAC_MIN) / 100;
+        let cherry_pos = pac_min + 95 * (map_w - 1 - pac_min) / 100;
 
         // ── Build game line ─────────────────────────────────────────
         let mut game = String::new();
@@ -134,7 +136,7 @@ impl Theme for Pacman {
             }
         }
 
-        for i in room_w..MAP_W {
+        for i in room_w..map_w {
             if game_over && i == pac_pos {
                 // Ghost caught pac-man
                 if g1 >= 0 && g1 as usize == pac_pos {
@@ -158,7 +160,7 @@ impl Theme for Pacman {
         }
 
         // ── Border ──────────────────────────────────────────────────
-        let hline_w = MAP_W + PAD * 2;
+        let hline_w = map_w + PAD * 2;
         let top_border = format!("{BLUE}╭{NC}{}{BLUE}╮{NC}", rep_hline(hline_w));
         let bot_border = format!("{BLUE}╰{NC}{}{BLUE}╯{NC}", rep_hline(hline_w));
         let game_line = format!("{BLUE}║{NC} {game} {BLUE}║{NC}");
@@ -180,7 +182,7 @@ impl Theme for Pacman {
         right_plain += &format!("Xontext {ctx_remain}% left");
         let right_len = right_plain.len();
 
-        let gap = TOTAL_W.saturating_sub(left_len + right_len).max(2);
+        let gap = total_w.saturating_sub(left_len + right_len).max(2);
         let gap_pad = " ".repeat(gap);
 
         let mut left_colored = format!("{ORANGE}CLAUDE{NC}");
@@ -225,21 +227,37 @@ impl Theme for Pacman {
                 let go_text = format!("{RED}GAME OVER{NC}");
                 let go_plain_len = 9; // "GAME OVER"
                 // Estimate visible length by counting non-escape chars
-                let mut vis_len = 0usize;
-                let mut in_esc = false;
-                for c in limit_line.chars() {
-                    if c == '\x1b' { in_esc = true; }
-                    else if in_esc { if c.is_ascii_alphabetic() { in_esc = false; } }
-                    else { vis_len += 1; }
-                }
-                let go_gap = TOTAL_W.saturating_sub(vis_len + go_plain_len).max(2);
+                let vis_len = visible_width(&limit_line);
+                let go_gap = total_w.saturating_sub(vis_len + go_plain_len).max(2);
                 limit_line += &" ".repeat(go_gap);
                 limit_line += &go_text;
             }
             footer = format!("\n{limit_line}");
         }
 
-        // ── Combine ─────────────────────────────────────────────────
-        format!("{header}\n{top_border}\n{game_line}\n{bot_border}{footer}")
+        // ── Combine: pad all lines to uniform visible width ─────────
+        let footer_trimmed = footer.trim_start_matches('\n').to_string();
+        let mut widths = vec![
+            visible_width(&header),
+            visible_width(&top_border),
+            visible_width(&game_line),
+            visible_width(&bot_border),
+        ];
+        if !footer_trimmed.is_empty() {
+            widths.push(visible_width(&footer_trimmed));
+        }
+        let max_vis = widths.into_iter().max().unwrap_or(total_w);
+        let target = max_vis.max(total_w);
+        let mut result = format!(
+            "{}\n{}\n{}\n{}",
+            pad_to_width(&header, target),
+            pad_to_width(&top_border, target),
+            pad_to_width(&game_line, target),
+            pad_to_width(&bot_border, target),
+        );
+        if !footer_trimmed.is_empty() {
+            result += &format!("\n{}", pad_to_width(&footer_trimmed, target));
+        }
+        result
     }
 }
