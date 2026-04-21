@@ -78,7 +78,7 @@ else
   info "Downloading $ARCHIVE..."
   TMPDIR=$(mktemp -d)
   if curl -fsSL -L "$DOWNLOAD_URL" -o "$TMPDIR/$ARCHIVE"; then
-    tar -xf "$TMPDIR/$ARCHIVE" -C "$TMPDIR"
+    tar -xf "$TMPDIR/$ARCHIVE" -C "$TMPDIR" --strip-components=1
     cp "$TMPDIR/$BIN_NAME" "$TARGET"
     chmod +x "$TARGET"
     rm -rf "$TMPDIR"

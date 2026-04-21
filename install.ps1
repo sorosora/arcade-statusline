@@ -20,7 +20,8 @@ $Arch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture 
     'x86_64'
 }
 
-$Archive = "arcade-statusline-${Arch}-pc-windows-msvc.zip"
+$ArchiveStem = "arcade-statusline-${Arch}-pc-windows-msvc"
+$Archive = "${ArchiveStem}.zip"
 $DownloadUrl = "${BaseUrl}/${Archive}"
 
 Write-Info "Detected platform: ${Arch}-pc-windows-msvc"
@@ -45,7 +46,7 @@ try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     Invoke-WebRequest -Uri $DownloadUrl -OutFile $ZipPath -UseBasicParsing
     Expand-Archive -Path $ZipPath -DestinationPath $TmpDir -Force
-    Copy-Item (Join-Path $TmpDir $BinName) $Target -Force
+    Copy-Item (Join-Path $TmpDir $ArchiveStem $BinName) $Target -Force
     Remove-Item $TmpDir -Recurse -Force
     Write-Info "Saved to $Target"
 } catch {
