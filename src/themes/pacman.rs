@@ -1,5 +1,6 @@
 use crate::helpers::*;
 use crate::models::{Input, RawState};
+use crate::settings::read_effort_level;
 use crate::themes::Theme;
 
 const DEFAULT_TOTAL_W: usize = 54;
@@ -223,15 +224,21 @@ impl Theme for Pacman {
                 }
             }
 
-            if game_over {
-                let go_text = format!("{RED}GAME OVER{NC}");
-                let go_plain_len = 9; // "GAME OVER"
-                // Estimate visible length by counting non-escape chars
-                let vis_len = visible_width(&limit_line);
-                let go_gap = total_w.saturating_sub(vis_len + go_plain_len).max(2);
-                limit_line += &" ".repeat(go_gap);
-                limit_line += &go_text;
+            // Effort label follows the rate-limit block (hidden during GAME OVER).
+            if !game_over {
+                if let Some(e) = read_effort_level().filter(|s| !s.is_empty()) {
+                    limit_line += &format!("  {DIM}{e}{NC}");
+                }
             }
+
+            // GAME OVER at the far right when a rate limit is exhausted.
+            if game_over {
+                let vis_len = visible_width(&limit_line);
+                let gap = total_w.saturating_sub(vis_len + 9).max(2);
+                limit_line += &" ".repeat(gap);
+                limit_line += &format!("{RED}GAME OVER{NC}");
+            }
+
             footer = format!("\n{limit_line}");
         }
 

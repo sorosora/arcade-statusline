@@ -19,6 +19,7 @@ Context window usage drives the character across the board, while rate limit gho
 - **Ghost animation** -- Both ghosts alternate legs (ᗩ/ᗣ) in opposite phase
 - **Cherry at 95%** -- A red cherry (ᐝ) marks the auto-compact threshold
 - **Game over** -- When a rate limit hits 100%, the ghost catches the character and GAME OVER appears
+- **Effort badge** -- Your `effortLevel` from `~/.claude/settings.json` appears after the 5-hour rate limit; hidden during GAME OVER
 
 ### Pikmin Bloom Inspired
 
@@ -31,6 +32,7 @@ A squad walks in place while a flower trail scrolls behind them. Using context p
 - **Pikmin animation** -- 🔴🟡🔵 squad alternates order on each refresh
 - **Fruit on reset** -- Rate limit reset times show as fruit (🍎🍊🍋🍇🍓🍑🫐) in future slots
 - **Rate limit aware** -- Rate limit hit prevents flower planting for that slot
+- **Effort badge** -- Your `effortLevel` from `~/.claude/settings.json` appears before the bloom indicator; `xhigh` / `max` add a ⏩ marker; hidden when a rate limit is hit
 
 ### Common
 
@@ -135,6 +137,7 @@ Claude Code pipes JSON status data to the binary via stdin. The binary maps metr
 | 7-day rate limit % | Purple ghost (caged when under 50%) |
 | Rate limit hits 100% | Ghost catches character = GAME OVER |
 | 95% context position | Cherry (ᐝ) = auto-compact warning |
+| `effortLevel` from settings | Text after 5h rate limit |
 
 ### Pikmin Bloom Inspired
 
@@ -144,6 +147,7 @@ Claude Code pipes JSON status data to the binary via stdin. The binary maps metr
 | No context consumed | Dot (·) or seedling (🌱) |
 | Rate limit reset time | Fruit in future slot |
 | Rate limit hits 100% | Flower planting blocked |
+| `effortLevel` from settings | Text before bloom indicator (`xhigh` / `max` add ⏩) |
 
 All percentages displayed are **remaining** (not used), so you always know how much is left.
 

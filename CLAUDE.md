@@ -12,6 +12,7 @@ This repo contains an arcade-themed statusline for Claude Code, implemented as a
 
 - `src/models.rs` -- Input JSON deserialization (model, context window, rate limits) and shared state types
 - `src/helpers.rs` -- Formatting utilities (tokens, reset time, color coding) and ANSI constants
+- `src/settings.rs` -- Reads user settings from `~/.claude/settings.json` (e.g., `effortLevel`)
 - `src/state.rs` -- Persistent state management (`/tmp/.claude-statusline-state.json`), 15-min slot tracking, session-based context consumption detection using parent PID
 - `src/themes/pacman.rs` -- Pac-Man chase game theme
 - `src/themes/pikmin.rs` -- Pikmin Bloom flower planting theme
@@ -27,6 +28,7 @@ Single-line chase game with ANSI colors:
 6. Red cherry (ᐝ) at 95% position marks auto-compact threshold
 7. Rate limit 100% → GAME OVER
 8. Neon blue (38;5;27) rounded double-line border with 1-cell padding
+9. `effortLevel` from `~/.claude/settings.json` appears in the footer after the 5h rate limit; hidden during GAME OVER
 
 ### Pikmin Bloom Theme
 
@@ -37,6 +39,7 @@ Flower planting trail with 15-minute time slots:
 4. Rate limit reset times shown as fruit in future slots
 5. Rate limit hit blocks flower planting
 6. Sky and grass decorative rows
+7. `effortLevel` from `~/.claude/settings.json` appears in the footer before the bloom indicator; `xhigh` / `max` add ⏩; hidden when a rate limit is hit
 
 ## Conventions
 

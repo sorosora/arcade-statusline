@@ -1,5 +1,6 @@
 mod helpers;
 mod models;
+mod settings;
 mod state;
 mod themes;
 

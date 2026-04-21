@@ -1,5 +1,6 @@
 use crate::helpers::*;
 use crate::models::{Input, RawState};
+use crate::settings::read_effort_level;
 use crate::state::{current_slot, slot_pos};
 use crate::themes::Theme;
 
@@ -231,10 +232,21 @@ impl Theme for Pikmin {
             }
         }
 
-        let (footer_right, footer_right_cols) = if rate_hit {
-            ("Ha! ▶️", 7usize)
+        let (footer_right, footer_right_cols): (String, usize) = if rate_hit {
+            ("Ha! ▶️".to_string(), 7)
         } else {
-            ("✨Bloom!⏹️", 10usize)
+            let effort = read_effort_level().filter(|s| !s.is_empty());
+            match effort {
+                Some(e) if e == "xhigh" || e == "max" => (
+                    format!("{DIM}{e}{NC}⏩ ✨Bloom!⏹️"),
+                    e.chars().count() + 2 + 1 + 10,
+                ),
+                Some(e) => (
+                    format!("{DIM}{e}{NC} ✨Bloom!⏹️"),
+                    e.chars().count() + 1 + 10,
+                ),
+                None => ("✨Bloom!⏹️".to_string(), 10),
+            }
         };
 
         let footer_gap = map_w.saturating_sub(footer_left_plain.len() + footer_right_cols).max(2);
